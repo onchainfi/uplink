@@ -103,13 +103,70 @@ export class Uplink {
     const srcNetwork = sourceNetwork || this.config.network;
     const dstNetwork = destinationNetwork || this._detectNetworkFromAddress(to);
 
-    // CRITICAL: Validate this is a same-chain payment BEFORE trying to sign
-    if (srcNetwork !== dstNetwork) {
-      throw new ValidationError(
-        `Uplink can only handle same-chain payments. ` +
-        `You provided sourceNetwork="${srcNetwork}" and destinationNetwork="${dstNetwork}". ` +
-        `We will be integrating cross-chain payments shortly.`
-      );
+    // Determine payment type and fetch correct signing address
+    const isCrossChain = srcNetwork !== dstNetwork;
+    let signToAddress = to; // Default to final recipient
+    let bridgeOrderId: string | undefined;
+
+    // SAME-CHAIN: Fetch intermediate wallet from backend config
+    if (!isCrossChain) {
+      console.log(`[Uplink] 💰 Same-chain ${srcNetwork} → ${srcNetwork}`);
+      
+      try {
+        const configResponse = await fetch(`${this.config.apiUrl}/v1/facilitators/config`, {
+          method: 'GET',
+          headers: { 'X-API-Key': this.config.apiKey },
+        });
+        
+        if (configResponse.ok) {
+          const configData = await configResponse.json() as any;
+          const intermediateWallet = configData.data?.samechainIntermediateWallet?.[srcNetwork];
+          
+          if (intermediateWallet) {
+            signToAddress = intermediateWallet;
+            console.log(`[Uplink] 💰 Signing to intermediate wallet: ${signToAddress}`);
+            console.log(`[Uplink] 💰 Final recipient: ${to}`);
+          } else {
+            console.warn(`[Uplink] ⚠️  No intermediate wallet for ${srcNetwork}`);
+          }
+        }
+      } catch (error) {
+        console.warn(`[Uplink] ⚠️  Could not fetch config:`, error);
+      }
+    }
+
+    // CROSS-CHAIN: Call bridge/prepare to get adapter address
+    if (isCrossChain) {
+      console.log(`[Uplink] 🌉 Cross-chain ${srcNetwork} → ${dstNetwork}`);
+      
+      const prepareResponse = await fetch(`${this.config.apiUrl}/v1/bridge/prepare`, {
+        method: 'POST',
+        headers: {
+          'X-API-Key': this.config.apiKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          sourceNetwork: srcNetwork,
+          destinationNetwork: dstNetwork,
+          recipientAddress: to,
+          amount: normalizedAmount,
+        }),
+      });
+      
+      if (!prepareResponse.ok) {
+        const errorData = await prepareResponse.json().catch(() => ({})) as any;
+        throw new PaymentError(
+          `Bridge preparation failed: ${errorData.message || prepareResponse.statusText}`
+        );
+      }
+      
+      const bridgeData = await prepareResponse.json() as any;
+      signToAddress = bridgeData.data.depositAddress;
+      bridgeOrderId = bridgeData.data.orderId;
+      
+      console.log(`[Uplink] 🌉 Adapter: ${signToAddress}`);
+      console.log(`[Uplink] 🌉 Bridge ID: ${bridgeOrderId}`);
+      console.log(`[Uplink] 🌉 Final recipient: ${to} (on ${dstNetwork})`);
     }
 
     // Get payment header (sign if Mode A, use provided if Mode B)
@@ -121,9 +178,10 @@ export class Uplink {
     } else {
       // Mode A: SDK creates payment header
       finalPaymentHeader = await this._signPayment(
-        to,
+        signToAddress,  // ✅ Sign to intermediate wallet or adapter
         normalizedAmount,
-        srcNetwork
+        srcNetwork,
+        dstNetwork  // ✅ Pass both networks for cross-chain metadata
       );
     }
 
@@ -139,14 +197,18 @@ export class Uplink {
         priority,
         ...(idempotencyKey && { idempotencyKey }),
         ...(metadata && { metadata }),
+        ...(bridgeOrderId && { bridgeOrderId }),  // ✅ For cross-chain linking
       };
 
       console.log(`\n[DEBUG] Uplink API Request:`);
       console.log(`  Endpoint: /v1/uplink/pay`);
-      console.log(`  Network: ${srcNetwork} (same-chain)`);
+      console.log(`  Type: ${isCrossChain ? 'cross-chain' : 'same-chain'}`);
+      console.log(`  Source: ${srcNetwork}`);
+      console.log(`  Destination: ${dstNetwork}`);
       console.log(`  To: ${to}`);
       console.log(`  Amount: ${normalizedAmount}`);
       console.log(`  Payment Header Length: ${finalPaymentHeader.length} chars`);
+      if (bridgeOrderId) console.log(`  Bridge Order ID: ${bridgeOrderId}`);
       console.log();
 
       const response = await fetch(`${this.config.apiUrl}/v1/uplink/pay`, {
@@ -195,18 +257,19 @@ export class Uplink {
   private async _signPayment(
     to: string,
     amount: string,
-    network: string
+    sourceNetwork: string,
+    destinationNetwork: string
   ): Promise<string> {
-    if (network.startsWith('solana')) {
+    if (sourceNetwork.startsWith('solana')) {
       if (!this.solanaSigner) {
         throw new ValidationError('Solana signer not configured');
       }
-      return this.solanaSigner.signPayment(to, amount, network, network);
+      return this.solanaSigner.signPayment(to, amount, sourceNetwork, destinationNetwork);
     } else {
       if (!this.evmSigner) {
         throw new ValidationError('EVM signer not configured');
       }
-      return this.evmSigner.signPayment(to, amount, network, network);
+      return this.evmSigner.signPayment(to, amount, sourceNetwork, destinationNetwork);
     }
   }
 
