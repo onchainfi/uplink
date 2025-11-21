@@ -194,6 +194,158 @@ tsx 5-payment-scheduler.ts
 
 ---
 
+## 🔐 Two Integration Modes
+
+Uplink supports two modes for handling payment signing:
+
+### Mode A: SDK Signs (Convenience)
+
+**Best for:** Backend services, trusted environments
+
+The SDK handles all signing with your private key:
+
+```typescript
+const uplink = new Uplink({
+  apiKey: process.env.ONCHAIN_API_KEY!,
+  privateKey: process.env.BASE_PRIVATE_KEY!,
+  network: 'base',
+  createAtaFeeAcceptance: true,
+  minimumCrosschainFeeAcceptance: true,
+});
+
+const txHash = await uplink.pay({
+  to: '0xRecipient...',
+  amount: '10.00'
+});
+```
+
+**How it works:**
+1. Private key stored on **YOUR server** (never sent to Onchain)
+2. SDK signs transaction **locally on YOUR server**
+3. Only the **signed transaction** is sent to Onchain API
+
+**Pros:**
+- ✅ Simple integration (one line to pay)
+- ✅ SDK handles all signing complexity
+- ✅ Perfect for backend automation
+- ✅ Private key NEVER leaves your server
+
+**Cons:**
+- ⚠️ Private key must be stored on your server
+- ⚠️ Requires trust in your execution environment
+
+---
+
+### Mode B: Pre-Signed (Advanced/Secure)
+
+**Best for:** Frontend/backend split, hardware wallets, multi-sig
+
+You sign externally and pass the signature to Uplink.
+
+**How it works:**
+1. User signs transaction on **client/hardware wallet** (private key never touches your server)
+2. Client sends **signed transaction** to your server
+3. Your server passes **signed transaction** to Onchain API (no private key involved)
+
+```typescript
+// Server-side: Initialize without private key
+const uplink = new Uplink({
+  apiKey: process.env.ONCHAIN_API_KEY!,
+  createAtaFeeAcceptance: true,
+  minimumCrosschainFeeAcceptance: true,
+});
+
+// Client-side or external: Create signature
+// For Base (EVM):
+import { ethers } from 'ethers';
+
+const wallet = new ethers.Wallet(privateKey);
+
+// EIP-712 signature for USDC Transfer with Authorization
+const domain = {
+  name: 'USD Coin',
+  version: '2',
+  chainId: 8453, // Base
+  verifyingContract: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // USDC on Base
+};
+
+const types = {
+  TransferWithAuthorization: [
+    { name: 'from', type: 'address' },
+    { name: 'to', type: 'address' },
+    { name: 'value', type: 'uint256' },
+    { name: 'validAfter', type: 'uint256' },
+    { name: 'validBefore', type: 'uint256' },
+    { name: 'nonce', type: 'bytes32' },
+  ],
+};
+
+const nonce = '0x' + Array.from(crypto.getRandomValues(new Uint8Array(32)))
+  .map(b => b.toString(16).padStart(2, '0'))
+  .join('');
+
+const value = {
+  from: wallet.address,
+  to: '0xRecipient...',
+  value: BigInt(10_000_000), // 10 USDC (6 decimals)
+  validAfter: BigInt(0),
+  validBefore: BigInt(Math.floor(Date.now() / 1000) + 3600), // 1 hour
+  nonce,
+};
+
+const signature = await wallet.signTypedData(domain, types, value);
+
+// Create x402 payment header
+const paymentHeader = Buffer.from(JSON.stringify({
+  x402Version: 1,
+  scheme: 'exact',
+  network: 'base',
+  payload: {
+    signature,
+    authorization: {
+      from: wallet.address,
+      to: value.to,
+      value: value.value.toString(),
+      validAfter: value.validAfter.toString(),
+      validBefore: value.validBefore.toString(),
+      nonce,
+    },
+  },
+})).toString('base64');
+
+// Server-side: Use the pre-signed header
+const txHash = await uplink.pay({
+  to: '0xRecipient...',
+  amount: '10.00',
+  paymentHeader, // Pass the signature from client
+});
+```
+
+**Pros:**
+- ✅ Private key never touches server
+- ✅ Works with hardware wallets
+- ✅ Multi-sig compatible
+- ✅ Better security for high-value transfers
+
+**Cons:**
+- ⚠️ More complex integration
+- ⚠️ Requires client-side signing logic
+
+---
+
+### Mode Comparison
+
+| Feature | Mode A (SDK Signs) | Mode B (Pre-Signed) |
+|---------|-------------------|---------------------|
+| **Ease of Use** | ⭐⭐⭐ Very Easy | ⭐⭐ Moderate |
+| **Security** | ⭐⭐ Good | ⭐⭐⭐ Excellent |
+| **Private Key** | Your server (never sent to Onchain) | Client/hardware (never sent anywhere) |
+| **Hardware Wallet** | ❌ No | ✅ Yes |
+| **Multi-sig** | ❌ No | ✅ Yes |
+| **Best For** | Backends, bots | High-security, frontends |
+
+---
+
 ## 📖 Common Patterns
 
 ### Pattern 1: Idempotent Payments

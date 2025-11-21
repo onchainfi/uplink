@@ -2,6 +2,24 @@
 
 All notable changes to the Uplink SDK will be documented in this file.
 
+## [2.1.1] - 2024-11-21
+
+### 📝 Documentation
+
+**Updates:**
+- Clarified Mode A vs Mode B in server-side README
+- Added "How it works" sections explaining where private keys are stored
+- Made explicit that private keys NEVER leave user's server/client
+- Added complete Mode B signing example with EIP-712 for Base
+- Updated comparison table with security clarifications
+
+**Key Clarifications:**
+- Mode A: Private key on YOUR server, signing happens locally, only signed tx sent to API
+- Mode B: Private key on client/hardware, never touches server, only signed tx sent to API
+- Both modes: Private keys NEVER sent to Onchain API
+
+---
+
 ## [2.1.0] - 2024-11-21
 
 ### 📚 Examples & Documentation
