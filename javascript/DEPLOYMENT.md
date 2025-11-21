@@ -11,7 +11,9 @@ By default, the SDK connects to **production**:
 ```typescript
 const uplink = new Uplink({
   apiKey: process.env.ONCHAIN_API_KEY!,
-  privateKey: process.env.UPLINK_PRIVATE_KEY!
+  privateKey: process.env.UPLINK_PRIVATE_KEY!,
+  createAtaFeeAcceptance: true,
+  minimumCrosschainFeeAcceptance: true,
 });
 // Connects to: https://api.onchain.fi
 ```
@@ -24,7 +26,9 @@ To use staging, explicitly set the `apiUrl`:
 const uplink = new Uplink({
   apiKey: process.env.ONCHAIN_API_KEY!,
   privateKey: process.env.UPLINK_PRIVATE_KEY!,
-  apiUrl: 'https://staging.onchain.fi'
+  apiUrl: 'https://staging.onchain.fi',
+  createAtaFeeAcceptance: true,
+  minimumCrosschainFeeAcceptance: true,
 });
 ```
 
@@ -41,6 +45,8 @@ node your-script.js
 
 - `ONCHAIN_API_KEY` - Your Onchain API key
 - `UPLINK_PRIVATE_KEY` - Wallet private key (for Mode A)
+- `BASE_PRIVATE_KEY` - Base network private key (for multi-network apps)
+- `SOLANA_PRIVATE_KEY` - Solana network private key (for multi-network apps)
 
 ### Optional
 
@@ -72,7 +78,9 @@ node your-script.js
 const uplink = new Uplink({
   apiKey: process.env.ONCHAIN_API_KEY!,
   privateKey: process.env.UPLINK_PRIVATE_KEY!,
-  apiUrl: 'https://staging.onchain.fi'  // ❌ WRONG!
+  apiUrl: 'https://staging.onchain.fi',  // ❌ WRONG!
+  createAtaFeeAcceptance: true,
+  minimumCrosschainFeeAcceptance: true,
 });
 ```
 
@@ -83,6 +91,8 @@ const uplink = new Uplink({
 const uplink = new Uplink({
   apiKey: process.env.ONCHAIN_API_KEY!,
   privateKey: process.env.UPLINK_PRIVATE_KEY!,
+  createAtaFeeAcceptance: true,
+  minimumCrosschainFeeAcceptance: true,
   ...(process.env.UPLINK_API_URL && { apiUrl: process.env.UPLINK_API_URL })
 });
 ```
@@ -96,6 +106,8 @@ const isProduction = process.env.NODE_ENV === 'production';
 const uplink = new Uplink({
   apiKey: process.env.ONCHAIN_API_KEY!,
   privateKey: process.env.UPLINK_PRIVATE_KEY!,
+  createAtaFeeAcceptance: true,
+  minimumCrosschainFeeAcceptance: true,
   ...((!isProduction) && { apiUrl: 'https://staging.onchain.fi' })
 });
 ```

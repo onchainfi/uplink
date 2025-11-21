@@ -2,6 +2,127 @@
 
 All notable changes to the Uplink SDK will be documented in this file.
 
+## [2.1.0] - 2024-11-21
+
+### 📚 Examples & Documentation
+
+**New Examples:**
+- ✅ **10 comprehensive examples** added (5 client-side, 5 server-side)
+- ✅ **Client-side examples** for AI agents, bots, and CLI tools
+  - Basic same-chain payments
+  - Cross-chain payments (Base ↔ Solana)
+  - Fee handling and edge cases
+  - Error handling patterns
+  - Advanced features (idempotency, metadata, priority)
+- ✅ **Server-side examples** for APIs and backend services
+  - Express basic integration
+  - Production-ready server with database
+  - Batch payment processor
+  - Webhook listener with signature verification
+  - Payment scheduler (recurring & delayed)
+- ✅ **Comprehensive READMEs** for both client and server examples
+  - Common patterns and best practices
+  - Security guidelines
+  - Architecture patterns
+  - Troubleshooting guides
+  - Real-world use cases
+
+**Documentation Updates:**
+- Updated all READMEs with fee acceptance flags
+- Added examples section to main documentation
+- Updated DEPLOYMENT.md with multi-network setup
+- Consistent initialization patterns across all docs
+
+**What Developers Get:**
+- Copy-paste ready code for every use case
+- Professional patterns for production
+- Security best practices built-in
+- Clear learning path from basic to advanced
+
+### 🚀 Major Changes - Fee Transparency & Validation
+
+**Breaking Changes:**
+- **REQUIRED**: `createAtaFeeAcceptance: true` must be set in config
+- **REQUIRED**: `minimumCrosschainFeeAcceptance: true` must be set in config
+- Agents must explicitly acknowledge fee structure before making payments
+
+**New Features:**
+
+### 🚀 Major Changes - Fee Transparency & Validation
+
+**Breaking Changes:**
+- **REQUIRED**: `createAtaFeeAcceptance: true` must be set in config
+- **REQUIRED**: `minimumCrosschainFeeAcceptance: true` must be set in config
+- Agents must explicitly acknowledge fee structure before making payments
+
+**New Features:**
+- ✅ **Transparent Fee Calculation** - SDK now calculates and displays all fees upfront
+- ✅ **ATA Fee Awareness** - $0.40 ATA creation fee automatically checked and applied
+- ✅ **Minimum Fee Enforcement** - $0.01 minimum for cross-chain payments
+- ✅ **Server-Side Validation** - All fees validated against backend `FeeCalculationService`
+- ✅ **Detailed Logging** - Clear breakdown of gross amount, fees, and net recipient amount
+- ✅ **Insufficient Funds Detection** - Rejects payments where amount < fees
+
+**Technical Changes:**
+- Added `POST /v1/uplink/prepare-payment` endpoint integration
+- Fee calculation now matches backend `FeeCalculationService` exactly
+- Added `createAtaFeeAcceptance` and `minimumCrosschainFeeAcceptance` config options
+- Enhanced error messages with fee breakdowns
+- Fee validation prevents double-calculation bugs
+
+**What Agents Get:**
+- Know exact costs BEFORE signing transactions
+- Clear error messages when payments would fail
+- Protection against insufficient payment amounts
+- Automatic ATA creation handling for fresh Solana wallets
+
+**Migration from 2.0.x:**
+```typescript
+// OLD (will throw error):
+const uplink = new Uplink({
+  apiKey: process.env.ONCHAIN_API_KEY!,
+  privateKey: process.env.UPLINK_PRIVATE_KEY!,
+});
+
+// NEW (required):
+const uplink = new Uplink({
+  apiKey: process.env.ONCHAIN_API_KEY!,
+  privateKey: process.env.UPLINK_PRIVATE_KEY!,
+  createAtaFeeAcceptance: true,              // ← Required
+  minimumCrosschainFeeAcceptance: true,      // ← Required
+});
+```
+
+**Fee Structure:**
+- Same-chain: 0.1% (all tiers currently equal)
+- Cross-chain: 0.1% with $0.01 minimum
+- ATA creation: $0.40 (when Solana recipient needs new USDC account)
+
+**Example Fee Scenarios:**
+```
+Scenario 1: $10 Base → Base payment
+  Gross: $10.00
+  Fee:   $0.01 (0.1%)
+  Net:   $9.99
+
+Scenario 2: $10 Base → Solana (existing ATA)
+  Gross: $10.00
+  Fee:   $0.01 (0.1%, minimum enforced)
+  Net:   $9.99
+
+Scenario 3: $1 Base → Solana (needs ATA)
+  Gross: $1.00
+  Fee:   $0.01 (0.1%) + $0.40 (ATA) = $0.41
+  Net:   $0.59
+
+Scenario 4: $0.05 Base → Solana (minimum fee)
+  Gross: $0.05
+  Fee:   $0.01 (minimum enforced, 20% of payment)
+  Net:   $0.04
+```
+
+---
+
 ## [2.0.0] - 2025-11-19
 
 ### 🚀 Major Changes - Two-Hop Architecture & Cross-Chain Support

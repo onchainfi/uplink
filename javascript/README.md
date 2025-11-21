@@ -22,7 +22,9 @@ import { Uplink } from '@onchainfi/uplink';
 const uplink = new Uplink({
   apiKey: process.env.ONCHAIN_API_KEY!,
   privateKey: process.env.UPLINK_PRIVATE_KEY!,
-  network: 'base'  // or 'solana'
+  network: 'base',  // or 'solana'
+  createAtaFeeAcceptance: true,
+  minimumCrosschainFeeAcceptance: true,
 });
 
 const txHash = await uplink.pay({
@@ -34,6 +36,17 @@ console.log(`Paid! TX: ${txHash}`);
 ```
 
 That's it! Same-chain payments on Base and Solana.
+
+---
+
+## 📚 Examples
+
+**New to Uplink?** Check out our comprehensive examples:
+
+- 🎯 **[Client-Side Examples](./examples/client-side/)** - AI agents, bots, CLI tools (5 examples)
+- 🚀 **[Server-Side Examples](./examples/server-side/)** - APIs, backend services (5 examples)
+
+Both include detailed READMEs with patterns, best practices, and real-world use cases.
 
 ---
 
@@ -56,7 +69,9 @@ import { Uplink } from '@onchainfi/uplink';
 const uplink = new Uplink({
   apiKey: process.env.ONCHAIN_API_KEY!,
   privateKey: process.env.UPLINK_PRIVATE_KEY!,
-  network: 'base'
+  network: 'base',
+  createAtaFeeAcceptance: true,
+  minimumCrosschainFeeAcceptance: true,
 });
 
 // Make a payment
@@ -76,7 +91,9 @@ SDK handles signing with your private key:
 ```typescript
 const uplink = new Uplink({
   apiKey: process.env.ONCHAIN_API_KEY!,
-  privateKey: process.env.UPLINK_PRIVATE_KEY!
+  privateKey: process.env.UPLINK_PRIVATE_KEY!,
+  createAtaFeeAcceptance: true,
+  minimumCrosschainFeeAcceptance: true,
 });
 
 const txHash = await uplink.pay({
@@ -91,7 +108,9 @@ You sign externally (hardware wallet, custom signer, etc.):
 
 ```typescript
 const uplink = new Uplink({
-  apiKey: process.env.ONCHAIN_API_KEY!
+  apiKey: process.env.ONCHAIN_API_KEY!,
+  createAtaFeeAcceptance: true,
+  minimumCrosschainFeeAcceptance: true,
 });
 
 // Sign with your external signer
@@ -204,7 +223,9 @@ const uplink = new Uplink({
   maxRetries: 3,                        // Default: 3
   retryDelay: 1.0,                      // Default: 1.0 (seconds)
   timeout: 120.0,                       // Default: 120.0 (seconds)
-  solanaRpcUrl: 'https://api.mainnet-beta.solana.com'  // Default: Solana mainnet RPC
+  solanaRpcUrl: 'https://api.mainnet-beta.solana.com',  // Default: Solana mainnet RPC
+  createAtaFeeAcceptance: true,         // Required: Acknowledge ATA fees
+  minimumCrosschainFeeAcceptance: true, // Required: Acknowledge cross-chain minimums
 });
 ```
 
@@ -215,6 +236,8 @@ const uplink = new Uplink({
 const uplink = new Uplink({
   apiKey: process.env.ONCHAIN_API_KEY!,
   privateKey: process.env.UPLINK_PRIVATE_KEY!,
+  createAtaFeeAcceptance: true,
+  minimumCrosschainFeeAcceptance: true,
   // Uses production API: https://api.onchain.fi
 });
 ```
@@ -224,7 +247,9 @@ const uplink = new Uplink({
 const uplink = new Uplink({
   apiKey: process.env.ONCHAIN_API_KEY!,
   privateKey: process.env.UPLINK_PRIVATE_KEY!,
-  apiUrl: 'https://staging.onchain.fi'  // Override for testing
+  apiUrl: 'https://staging.onchain.fi',  // Override for testing
+  createAtaFeeAcceptance: true,
+  minimumCrosschainFeeAcceptance: true,
 });
 ```
 
@@ -242,7 +267,9 @@ import { Uplink } from '@onchainfi/uplink';
 
 const uplink = new Uplink({
   apiKey: process.env.ONCHAIN_API_KEY!,
-  privateKey: process.env.UPLINK_PRIVATE_KEY!
+  privateKey: process.env.UPLINK_PRIVATE_KEY!,
+  createAtaFeeAcceptance: true,
+  minimumCrosschainFeeAcceptance: true,
 });
 ```
 
@@ -273,6 +300,7 @@ AGPL-3.0
 ## Links
 
 - [Documentation](https://onchain.fi/docs/uplink)
+- [Examples](./examples/) - Client-side & server-side examples
 - [GitHub](https://github.com/onchainfi/uplink)
 - [Support](mailto:dev@onchain.fi)
 

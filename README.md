@@ -14,7 +14,8 @@
 npm install @onchainfi/uplink
 ```
 
-📖 [Full Documentation](./javascript/README.md)
+📖 [Full Documentation](./javascript/README.md)  
+📚 [Examples](./javascript/examples/) - 10 comprehensive examples for client & server
 
 ## Getting Started
 
@@ -25,7 +26,30 @@ npm install @onchainfi/uplink
    export ONCHAIN_API_KEY=your-key
    export UPLINK_PRIVATE_KEY=0x...
    ```
-4. **Make a payment**: See [JavaScript README](./javascript/README.md)
+4. **Make a payment**: 
+   ```typescript
+   import { Uplink } from '@onchainfi/uplink';
+
+   const uplink = new Uplink({
+     apiKey: process.env.ONCHAIN_API_KEY!,
+     privateKey: process.env.UPLINK_PRIVATE_KEY!,
+     network: 'base',
+     createAtaFeeAcceptance: true,
+     minimumCrosschainFeeAcceptance: true,
+   });
+
+   const txHash = await uplink.pay({
+     to: '0xRecipient...',
+     amount: '$10'
+   });
+   ```
+
+## 📚 Examples
+
+- **[Client-Side Examples](./javascript/examples/client-side/)** - AI agents, bots, CLI tools (5 examples)
+- **[Server-Side Examples](./javascript/examples/server-side/)** - APIs, backend services (5 examples)
+
+Both with comprehensive READMEs, patterns, and best practices.
 
 ## License
 
