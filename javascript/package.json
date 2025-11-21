@@ -1,6 +1,6 @@
 {
   "name": "@onchainfi/uplink",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "Access Point to the Onchain Aggregator - JavaScript/TypeScript SDK",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

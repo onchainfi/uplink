@@ -313,6 +313,95 @@ try {
 }
 ```
 
+### Pattern 5: Mode B - External Signing
+
+For hardware wallets, multi-sig, or custom signers:
+
+**Base (EVM) External Signing:**
+```typescript
+import { Uplink } from '@onchainfi/uplink';
+import { ethers } from 'ethers';
+
+// Initialize without private key
+const uplink = new Uplink({
+  apiKey: process.env.ONCHAIN_API_KEY!,
+  createAtaFeeAcceptance: true,
+  minimumCrosschainFeeAcceptance: true,
+});
+
+// Your external signer (hardware wallet, etc.)
+const wallet = new ethers.Wallet(process.env.HARDWARE_WALLET_KEY!);
+
+// Create EIP-712 signature
+const domain = {
+  name: 'USD Coin',
+  version: '2',
+  chainId: 8453, // Base
+  verifyingContract: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // USDC
+};
+
+const types = {
+  TransferWithAuthorization: [
+    { name: 'from', type: 'address' },
+    { name: 'to', type: 'address' },
+    { name: 'value', type: 'uint256' },
+    { name: 'validAfter', type: 'uint256' },
+    { name: 'validBefore', type: 'uint256' },
+    { name: 'nonce', type: 'bytes32' },
+  ],
+};
+
+const amount = '10.00';
+const recipient = '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb';
+const nonce = '0x' + Array.from(crypto.getRandomValues(new Uint8Array(32)))
+  .map(b => b.toString(16).padStart(2, '0'))
+  .join('');
+
+const value = {
+  from: wallet.address,
+  to: recipient,
+  value: BigInt(parseFloat(amount) * 1_000_000), // USDC has 6 decimals
+  validAfter: BigInt(0),
+  validBefore: BigInt(Math.floor(Date.now() / 1000) + 3600), // 1 hour
+  nonce,
+};
+
+// Sign with external wallet
+const signature = await wallet.signTypedData(domain, types, value);
+
+// Create x402 payment header
+const paymentHeader = Buffer.from(JSON.stringify({
+  x402Version: 1,
+  scheme: 'exact',
+  network: 'base',
+  payload: {
+    signature,
+    authorization: {
+      from: wallet.address,
+      to: recipient,
+      value: value.value.toString(),
+      validAfter: value.validAfter.toString(),
+      validBefore: value.validBefore.toString(),
+      nonce,
+    },
+  },
+})).toString('base64');
+
+// Use pre-signed header
+const txHash = await uplink.pay({
+  to: recipient,
+  amount,
+  paymentHeader, // Pass the signature
+});
+```
+
+**Why Use Mode B?**
+- ✅ Hardware wallet security
+- ✅ Multi-sig support
+- ✅ Custom signing logic
+- ✅ Air-gapped signing
+- ✅ Compliance requirements
+
 ---
 
 ## 🏗️ Use Cases

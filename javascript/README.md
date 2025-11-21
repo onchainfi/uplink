@@ -113,13 +113,65 @@ const uplink = new Uplink({
   minimumCrosschainFeeAcceptance: true,
 });
 
-// Sign with your external signer
-const paymentHeader = await myExternalSigner.sign({
-  to: '0xRecipient...',
-  amount: '10.00'
-});
+// Sign with your external signer (hardware wallet, etc.)
+// For Base (EVM) - Complete EIP-712 signing:
+import { ethers } from 'ethers';
 
-// Pass pre-signed header
+const wallet = new ethers.Wallet(privateKey); // Or hardware wallet
+
+// EIP-712 signature for USDC Transfer with Authorization
+const domain = {
+  name: 'USD Coin',
+  version: '2',
+  chainId: 8453, // Base
+  verifyingContract: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // USDC on Base
+};
+
+const types = {
+  TransferWithAuthorization: [
+    { name: 'from', type: 'address' },
+    { name: 'to', type: 'address' },
+    { name: 'value', type: 'uint256' },
+    { name: 'validAfter', type: 'uint256' },
+    { name: 'validBefore', type: 'uint256' },
+    { name: 'nonce', type: 'bytes32' },
+  ],
+};
+
+const nonce = '0x' + Array.from(crypto.getRandomValues(new Uint8Array(32)))
+  .map(b => b.toString(16).padStart(2, '0'))
+  .join('');
+
+const value = {
+  from: wallet.address,
+  to: '0xRecipient...',
+  value: BigInt(10_000_000), // 10 USDC (6 decimals)
+  validAfter: BigInt(0),
+  validBefore: BigInt(Math.floor(Date.now() / 1000) + 3600), // 1 hour
+  nonce,
+};
+
+const signature = await wallet.signTypedData(domain, types, value);
+
+// Create x402 payment header
+const paymentHeader = Buffer.from(JSON.stringify({
+  x402Version: 1,
+  scheme: 'exact',
+  network: 'base',
+  payload: {
+    signature,
+    authorization: {
+      from: wallet.address,
+      to: value.to,
+      value: value.value.toString(),
+      validAfter: value.validAfter.toString(),
+      validBefore: value.validBefore.toString(),
+      nonce,
+    },
+  },
+})).toString('base64');
+
+// Pass pre-signed header to Uplink
 const txHash = await uplink.pay({
   to: '0xRecipient...',
   amount: '$10',

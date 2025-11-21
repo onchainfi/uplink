@@ -2,6 +2,24 @@
 
 All notable changes to the Uplink SDK will be documented in this file.
 
+## [2.1.2] - 2024-11-21
+
+### 📝 Documentation
+
+**Updates:**
+- Added complete Mode B signing examples to all documentation
+- Main SDK README now has full EIP-712 signing code
+- Client-side examples README has Mode B pattern with complete code
+- Server-side examples README has Mode B with complete code
+
+**What Developers Get:**
+- Production-ready EIP-712 signing code (not vague `myExternalSigner.sign()`)
+- All required fields for USDC Transfer with Authorization
+- Complete x402 payment header formatting
+- Copy-paste ready code for hardware wallets and custom signers
+
+---
+
 ## [2.1.1] - 2024-11-21
 
 ### 📝 Documentation
