@@ -43,8 +43,8 @@ That's it! Same-chain payments on Base and Solana.
 
 **New to Uplink?** Check out our comprehensive examples:
 
-- 🎯 **[Client-Side Examples](./examples/client-side/)** - AI agents, bots, CLI tools (5 examples)
-- 🚀 **[Server-Side Examples](./examples/server-side/)** - APIs, backend services (5 examples)
+- 🎯 **[Client-Side Examples](https://github.com/onchainfi/uplink/tree/main/javascript/examples/client-side)** - AI agents, bots, CLI tools (5 examples)
+- 🚀 **[Server-Side Examples](https://github.com/onchainfi/uplink/tree/main/javascript/examples/server-side)** - APIs, backend services (5 examples)
 
 Both include detailed READMEs with patterns, best practices, and real-world use cases.
 
@@ -351,8 +351,8 @@ AGPL-3.0
 
 ## Links
 
-- [Documentation](https://onchain.fi/docs/uplink)
-- [Examples](./examples/) - Client-side & server-side examples
+- [Documentation](https://onchain.fi/docs)
+- [Examples](https://github.com/onchainfi/uplink/tree/main/javascript/examples) - Client-side & server-side examples
 - [GitHub](https://github.com/onchainfi/uplink)
-- [Support](mailto:dev@onchain.fi)
+- [Support](mailto:comms@onchain.fi)
 
