@@ -305,11 +305,13 @@ export class Uplink {
       console.log(`[Uplink] ✍️  Signing transaction to ${prepareData.signToAddress}`);
       console.log(`[Uplink] 📝 ${prepareData.signToDescription}`);
       
+      const priority = params.priority || 'balanced';
       finalPaymentHeader = await this._signPayment(
         prepareData.signToAddress,  // Sign to intermediate wallet or adapter
         amount,
         prepareData.sourceNetwork,
-        prepareData.destinationNetwork
+        prepareData.destinationNetwork,
+        priority  // Pass priority for facilitator selection
       );
       
       console.log(`[Uplink] ✅ Transaction signed`);
@@ -399,18 +401,48 @@ export class Uplink {
 
   /**
    * Sign a same-chain payment and create x402 header
+   * Fetches optimal facilitator's fee payer for Solana transactions
    */
   private async _signPayment(
     to: string,
     amount: string,
     sourceNetwork: string,
-    destinationNetwork: string
+    destinationNetwork: string,
+    priority: string = 'balanced'
   ): Promise<string> {
     if (sourceNetwork.startsWith('solana')) {
       if (!this.solanaSigner) {
         throw new ValidationError('Solana signer not configured');
       }
-      return this.solanaSigner.signPayment(to, amount, sourceNetwork, destinationNetwork);
+      
+      // Fetch optimal facilitator's fee payer from API
+      let feePayerAddress: string | undefined;
+      try {
+        const response = await fetch(
+          `${this.config.apiUrl}/v1/facilitators/ranked?network=${sourceNetwork}&priority=${priority}`,
+          {
+            headers: {
+              'X-API-Key': this.config.apiKey,
+              'Content-Type': 'application/json',
+            },
+            signal: AbortSignal.timeout(5000),  // 5s timeout for facilitator lookup
+          }
+        );
+        
+        if (response.ok) {
+          const data = await response.json() as any;
+          const topFacilitator = data.data?.facilitators?.[0];
+          if (topFacilitator?.solanaFeePayer) {
+            feePayerAddress = topFacilitator.solanaFeePayer;
+            console.log(`[Uplink] Using fee payer from API (${topFacilitator.facilitatorName}):`, feePayerAddress);
+          }
+        }
+      } catch (error) {
+        // Fallback if API call fails
+        console.warn('[Uplink] Failed to fetch facilitator fee payer from API, using fallback:', error);
+      }
+      
+      return this.solanaSigner.signPayment(to, amount, sourceNetwork, destinationNetwork, feePayerAddress);
     } else {
       if (!this.evmSigner) {
         throw new ValidationError('EVM signer not configured');

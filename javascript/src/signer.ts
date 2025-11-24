@@ -33,7 +33,30 @@ const CHAIN_IDS: Record<string, number> = {
 };
 
 const SOLANA_USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
-const PAYAI_FEE_PAYER = '2wKupLR9q6wXYppw8Gr2NvWxKBUqm4PPJKkQfoxHDBg4';
+
+/**
+ * Fallback Solana fee payers if API doesn't provide one
+ * Primary source: API dynamically returns fee payer in /facilitators/ranked
+ * This map is only used if API call fails or doesn't return fee payer
+ */
+const FALLBACK_SOLANA_FEE_PAYERS: Record<string, string> = {
+  'PayAI': '2wKupLR9q6wXYppw8Gr2NvWxKBUqm4PPJKkQfoxHDBg4',
+  'Anyspend': '34DmdeSbEnng2bmbSj9ActckY49km2HdhiyAwyXZucqP',
+  'OctonetAI': '39uhTfNLqBiPvNQXeK1baNcScaVTCEj4iTxQwbEJukU1',
+  'Aurracloud': '8x8CzkTHTYkW18frrTR7HdCV6fsjenvcykJAXWvoPQW',
+};
+
+/**
+ * Get fallback fee payer for facilitator
+ */
+function getFallbackFeePayer(facilitatorName: string): string {
+  const feePayer = FALLBACK_SOLANA_FEE_PAYERS[facilitatorName];
+  if (!feePayer) {
+    // Default to PayAI if not found
+    return FALLBACK_SOLANA_FEE_PAYERS['PayAI'];
+  }
+  return feePayer;
+}
 
 /**
  * EVM (Ethereum/Base) transaction signer
@@ -192,7 +215,8 @@ export class SolanaSigner {
     to: string,
     amount: string,
     sourceNetwork: string,
-    destinationNetwork: string
+    destinationNetwork: string,
+    feePayerAddress?: string  // Optional: if not provided, uses PayAI fallback
   ): Promise<string> {
     try {
       // Parse amount to atomic units (6 decimals for USDC)
@@ -265,10 +289,11 @@ export class SolanaSigner {
       );
       instructions.push(transferIx);
 
-      // Use PayAI's fee payer
-      const feePayerPubkey = new PublicKey(PAYAI_FEE_PAYER);
+      // Use provided fee payer or default to PayAI fallback
+      const feePayerToUse = feePayerAddress || getFallbackFeePayer('PayAI');
+      const feePayerPubkey = new PublicKey(feePayerToUse);
 
-      // Create message with PayAI as payer
+      // Create message with dynamic fee payer
       const message = new TransactionMessage({
         payerKey: feePayerPubkey,
         recentBlockhash: blockhash,
