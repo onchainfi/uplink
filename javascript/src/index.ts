@@ -19,5 +19,6 @@ export type {
   PaymentResult,
   UplinkConfig,
   PaymentParams,
+  FacilitatorHeader,
 } from './types.js';
 

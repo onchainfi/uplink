@@ -112,3 +112,14 @@ export interface PreparePaymentResponse {
   isCrossChain: boolean;
 }
 
+/**
+ * Facilitator with signed payment header
+ * Used for Solana payments where each facilitator requires a different fee payer signature
+ */
+export interface FacilitatorHeader {
+  facilitatorName: string;
+  facilitatorId: string;
+  paymentHeader: string;
+  solanaFeePayer?: string;
+}
+

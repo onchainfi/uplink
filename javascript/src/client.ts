@@ -16,6 +16,7 @@ import {
   PaymentResult,
   PreparePaymentResponse,
   CalculatedFees,
+  FacilitatorHeader,
 } from './types.js';
 import {
   UplinkError,
@@ -293,20 +294,24 @@ export class Uplink {
     console.log(`   Total Fees: $${calculatedFees.totalFees}`);
     console.log(`   Net to Recipient: $${calculatedFees.netAmount}`);
 
-    // Step 4: Sign transaction (if Mode A)
-    let finalPaymentHeader: string;
+    // Step 4: Sign transaction (if Mode A) - Generate headers for all facilitators
+    let facilitatorHeaders: FacilitatorHeader[];
     
     if (paymentHeader) {
       // Mode B: Use provided payment header
-      finalPaymentHeader = paymentHeader;
+      facilitatorHeaders = [{
+        facilitatorName: 'provided',
+        facilitatorId: 'provided',
+        paymentHeader: paymentHeader,
+      }];
       console.log(`[Uplink] ✍️  Using pre-signed payment header`);
     } else {
-      // Mode A: SDK creates payment header
+      // Mode A: SDK creates payment headers for all facilitators
       console.log(`[Uplink] ✍️  Signing transaction to ${prepareData.signToAddress}`);
       console.log(`[Uplink] 📝 ${prepareData.signToDescription}`);
       
       const priority = params.priority || 'balanced';
-      finalPaymentHeader = await this._signPayment(
+      facilitatorHeaders = await this._signPayment(
         prepareData.signToAddress,  // Sign to intermediate wallet or adapter
         amount,
         prepareData.sourceNetwork,
@@ -314,94 +319,139 @@ export class Uplink {
         priority  // Pass priority for facilitator selection
       );
       
-      console.log(`[Uplink] ✅ Transaction signed`);
+      console.log(`[Uplink] ✅ Generated ${facilitatorHeaders.length} signed header(s)`);
     }
 
-    // Step 5: Execute payment with fee validation
-    try {
-      const requestPayload = {
-        paymentHeader: finalPaymentHeader,
-        to,
-        amount: calculatedFees.grossAmount,
-        sourceNetwork: prepareData.sourceNetwork,
-        destinationNetwork: prepareData.destinationNetwork,
-        token: 'USDC',
-        priority,
-        ...(idempotencyKey && { idempotencyKey }),
-        ...(metadata && { metadata }),
-        ...(prepareData.bridgeOrderId && { bridgeOrderId: prepareData.bridgeOrderId }),
-        // Pass calculated fees for server validation
-        calculatedFees: {
-          processingFee: calculatedFees.processingFee,
-          ataFee: calculatedFees.ataFee,
-          totalFees: calculatedFees.totalFees,
-          netAmount: calculatedFees.netAmount,
-        },
-      };
+    // Step 5: Execute payment with failover (try each facilitator sequentially)
+    console.log(`\n[Uplink] 📤 Attempting payment with ${facilitatorHeaders.length} facilitator(s)...`);
+    console.log(`   Type: ${prepareData.isCrossChain ? 'cross-chain' : 'same-chain'}`);
+    console.log(`   ${prepareData.sourceNetwork} → ${prepareData.destinationNetwork}`);
+    console.log();
 
-      console.log(`\n[Uplink] 📤 Sending payment request to API...`);
-      console.log(`   Type: ${prepareData.isCrossChain ? 'cross-chain' : 'same-chain'}`);
-      console.log(`   ${prepareData.sourceNetwork} → ${prepareData.destinationNetwork}`);
-      console.log();
-
-      const response = await fetch(`${this.config.apiUrl}/v1/uplink/pay`, {
-        method: 'POST',
-        headers: {
-          'X-API-Key': this.config.apiKey,
-          'Content-Type': 'application/json',
-          'User-Agent': 'uplink-js/2.0.0',
-        },
-        body: JSON.stringify(requestPayload),
-        signal: AbortSignal.timeout(this.config.timeout * 1000),
-      });
-
-      console.log(`[Uplink] 📥 API Response: ${response.status}`);
-
-      if (response.status === 401) {
-        throw new AuthenticationError('Invalid API key');
-      }
-
-      const data = await response.json() as any;
-
-      if (response.status !== 200 || data.status !== 'success') {
-        const reason = data.data?.reason || data.error?.message || data.message || 'Unknown error';
+    let lastError: Error | null = null;
+    
+    for (let i = 0; i < facilitatorHeaders.length; i++) {
+      const { facilitatorName, paymentHeader: currentHeader } = facilitatorHeaders[i];
+      
+      try {
+        console.log(`[Uplink] 🔄 Attempt ${i + 1}/${facilitatorHeaders.length}: ${facilitatorName}`);
         
-        // Special handling for fee mismatch errors
-        if (data.error?.code === 'FEE_MISMATCH') {
-          throw new PaymentError(
-            `Fee validation failed: ${reason}\n\n` +
-            `Your calculation: $${calculatedFees.totalFees}\n` +
-            `Server calculation: $${data.error.serverCalculation?.totalFees}\n\n` +
-            `This should never happen. Please report this issue.`,
-            reason
-          );
+        const requestPayload = {
+          paymentHeader: currentHeader,
+          to,
+          amount: calculatedFees.grossAmount,
+          sourceNetwork: prepareData.sourceNetwork,
+          destinationNetwork: prepareData.destinationNetwork,
+          token: 'USDC',
+          priority,
+          ...(idempotencyKey && { idempotencyKey }),
+          ...(metadata && { metadata }),
+          ...(prepareData.bridgeOrderId && { bridgeOrderId: prepareData.bridgeOrderId }),
+          // Pass calculated fees for server validation
+          calculatedFees: {
+            processingFee: calculatedFees.processingFee,
+            ataFee: calculatedFees.ataFee,
+            totalFees: calculatedFees.totalFees,
+            netAmount: calculatedFees.netAmount,
+          },
+        };
+
+        const response = await fetch(`${this.config.apiUrl}/v1/uplink/pay`, {
+          method: 'POST',
+          headers: {
+            'X-API-Key': this.config.apiKey,
+            'Content-Type': 'application/json',
+            'User-Agent': 'uplink-js/2.0.0',
+          },
+          body: JSON.stringify(requestPayload),
+          signal: AbortSignal.timeout(this.config.timeout * 1000),
+        });
+
+        console.log(`[Uplink] 📥 API Response: ${response.status}`);
+
+        if (response.status === 401) {
+          throw new AuthenticationError('Invalid API key');
+        }
+
+        const data = await response.json() as any;
+
+        if (response.status !== 200 || data.status !== 'success') {
+          const reason = data.data?.reason || data.error?.message || data.message || 'Unknown error';
+          
+          // Special handling for fee mismatch errors (don't retry)
+          if (data.error?.code === 'FEE_MISMATCH') {
+            throw new PaymentError(
+              `Fee validation failed: ${reason}\n\n` +
+              `Your calculation: $${calculatedFees.totalFees}\n` +
+              `Server calculation: $${data.error.serverCalculation?.totalFees}\n\n` +
+              `This should never happen. Please report this issue.`,
+              reason
+            );
+          }
+          
+          // Log failure and continue to next facilitator
+          console.log(`[Uplink] ❌ ${facilitatorName} failed: ${reason}`);
+          lastError = new PaymentError(`Payment failed: ${reason}`, reason);
+          
+          // Try next facilitator if available
+          if (i < facilitatorHeaders.length - 1) {
+            console.log(`[Uplink] ⏭️  Trying next facilitator...`);
+            continue;
+          } else {
+            throw lastError;
+          }
+        }
+
+        const result: PaymentResult = data.data;
+        
+        console.log(`\n[Uplink] ✅ Payment successful!`);
+        console.log(`   Transaction Hash: ${result.txHash}`);
+        console.log(`   Facilitator: ${result.facilitator}`);
+        console.log(`   Attempts: ${i + 1}/${facilitatorHeaders.length}`);
+        console.log();
+        
+        return result.txHash;
+      } catch (error) {
+        // Re-throw non-retryable errors immediately
+        if (error instanceof AuthenticationError) {
+          throw error;
+        }
+        if (error instanceof PaymentError && error.message.includes('Fee validation failed')) {
+          throw error;
         }
         
-        throw new PaymentError(`Payment failed: ${reason}`, reason);
+        // Log error and continue to next facilitator
+        console.log(`[Uplink] ❌ ${facilitatorName} error:`, error instanceof Error ? error.message : error);
+        lastError = error instanceof Error ? error : new Error(String(error));
+        
+        // Try next facilitator if available
+        if (i < facilitatorHeaders.length - 1) {
+          console.log(`[Uplink] ⏭️  Trying next facilitator...`);
+          continue;
+        }
       }
-
-      const result: PaymentResult = data.data;
-      
-      console.log(`\n[Uplink] ✅ Payment successful!`);
-      console.log(`   Transaction Hash: ${result.txHash}`);
-      console.log(`   Facilitator: ${result.facilitator}`);
-      console.log();
-      
-      return result.txHash;
-    } catch (error) {
-      if (error instanceof UplinkError) {
-        throw error;
+    }
+    
+    // All facilitators failed
+    console.log(`\n[Uplink] 💥 All ${facilitatorHeaders.length} facilitator(s) failed`);
+    
+    if (lastError) {
+      if (lastError instanceof UplinkError) {
+        throw lastError;
       }
-      if (error instanceof Error && error.name === 'AbortError') {
+      if (lastError instanceof Error && lastError.name === 'AbortError') {
         throw new NetworkError(`Request timeout after ${this.config.timeout}s`);
       }
-      throw new NetworkError(`Network request failed: ${error}`);
+      throw new NetworkError(`All facilitators failed. Last error: ${lastError.message}`);
     }
+    
+    throw new NetworkError('Payment failed with all facilitators');
   }
 
   /**
-   * Sign a same-chain payment and create x402 header
-   * Fetches optimal facilitator's fee payer for Solana transactions
+   * Sign payment headers for all ranked facilitators
+   * For Solana: Generates one header per facilitator (each with their fee payer)
+   * For EVM: Generates single header (works with all facilitators)
    */
   private async _signPayment(
     to: string,
@@ -409,14 +459,15 @@ export class Uplink {
     sourceNetwork: string,
     destinationNetwork: string,
     priority: string = 'balanced'
-  ): Promise<string> {
+  ): Promise<FacilitatorHeader[]> {
     if (sourceNetwork.startsWith('solana')) {
       if (!this.solanaSigner) {
         throw new ValidationError('Solana signer not configured');
       }
       
-      // Fetch optimal facilitator's fee payer from API
-      let feePayerAddress: string | undefined;
+      // Fetch ALL ranked facilitators with their fee payers
+      const facilitatorHeaders: FacilitatorHeader[] = [];
+      
       try {
         const response = await fetch(
           `${this.config.apiUrl}/v1/facilitators/ranked?network=${sourceNetwork}&priority=${priority}`,
@@ -431,23 +482,84 @@ export class Uplink {
         
         if (response.ok) {
           const data = await response.json() as any;
-          const topFacilitator = data.data?.facilitators?.[0];
-          if (topFacilitator?.solanaFeePayer) {
-            feePayerAddress = topFacilitator.solanaFeePayer;
-            console.log(`[Uplink] Using fee payer from API (${topFacilitator.facilitatorName}):`, feePayerAddress);
+          const facilitators = data.data?.facilitators || [];
+          
+          if (facilitators.length === 0) {
+            console.warn('[Uplink] No facilitators returned from API, using fallback');
+            // Generate single header with fallback fee payer
+            const header = await this.solanaSigner.signPayment(to, amount, sourceNetwork, destinationNetwork, undefined);
+            return [{
+              facilitatorName: 'PayAI',
+              facilitatorId: 'unknown',
+              paymentHeader: header,
+            }];
           }
+          
+          // Generate header for each facilitator with their specific fee payer
+          console.log(`[Uplink] 🔑 Pre-generating headers for ${facilitators.length} Solana facilitators...`);
+          
+          for (const facilitator of facilitators) {
+            const feePayerAddress = facilitator.solanaFeePayer;
+            
+            if (!feePayerAddress) {
+              console.warn(`[Uplink] Skipping ${facilitator.facilitatorName} - no fee payer address`);
+              continue;
+            }
+            
+            const header = await this.solanaSigner.signPayment(
+              to, 
+              amount, 
+              sourceNetwork, 
+              destinationNetwork, 
+              feePayerAddress
+            );
+            
+            facilitatorHeaders.push({
+              facilitatorName: facilitator.facilitatorName,
+              facilitatorId: facilitator.facilitatorId,
+              paymentHeader: header,
+              solanaFeePayer: feePayerAddress,
+            });
+            
+            console.log(`[Uplink]   ✓ ${facilitator.facilitatorName} (fee payer: ${feePayerAddress.slice(0, 8)}...)`);
+          }
+          
+          console.log(`[Uplink] ✅ Generated ${facilitatorHeaders.length} signed headers`);
+        } else {
+          console.warn('[Uplink] Failed to fetch facilitators from API, using fallback');
+          // Generate single header with fallback fee payer
+          const header = await this.solanaSigner.signPayment(to, amount, sourceNetwork, destinationNetwork, undefined);
+          return [{
+            facilitatorName: 'PayAI',
+            facilitatorId: 'unknown',
+            paymentHeader: header,
+          }];
         }
       } catch (error) {
-        // Fallback if API call fails
-        console.warn('[Uplink] Failed to fetch facilitator fee payer from API, using fallback:', error);
+        console.warn('[Uplink] Error fetching facilitators, using fallback:', error);
+        // Generate single header with fallback fee payer
+        const header = await this.solanaSigner.signPayment(to, amount, sourceNetwork, destinationNetwork, undefined);
+        return [{
+          facilitatorName: 'PayAI',
+          facilitatorId: 'unknown',
+          paymentHeader: header,
+        }];
       }
       
-      return this.solanaSigner.signPayment(to, amount, sourceNetwork, destinationNetwork, feePayerAddress);
+      return facilitatorHeaders;
     } else {
+      // EVM: Single header works for all facilitators
       if (!this.evmSigner) {
         throw new ValidationError('EVM signer not configured');
       }
-      return this.evmSigner.signPayment(to, amount, sourceNetwork, destinationNetwork);
+      
+      const header = await this.evmSigner.signPayment(to, amount, sourceNetwork, destinationNetwork);
+      
+      return [{
+        facilitatorName: 'all',
+        facilitatorId: 'all',
+        paymentHeader: header,
+      }];
     }
   }
 
