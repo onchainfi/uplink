@@ -511,7 +511,8 @@ export class Uplink {
               amount, 
               sourceNetwork, 
               destinationNetwork, 
-              feePayerAddress
+              feePayerAddress,
+              facilitator.facilitatorName  // Pass facilitator name for compatibility adjustments
             );
             
             facilitatorHeaders.push({

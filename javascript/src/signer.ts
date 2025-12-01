@@ -15,6 +15,7 @@ import {
 } from '@solana/web3.js';
 import {
   createTransferCheckedInstruction,
+  createTransferInstruction,
   getAssociatedTokenAddress,
   getMint,
   TOKEN_PROGRAM_ID,
@@ -216,7 +217,8 @@ export class SolanaSigner {
     amount: string,
     sourceNetwork: string,
     destinationNetwork: string,
-    feePayerAddress?: string  // Optional: if not provided, uses PayAI fallback
+    feePayerAddress?: string,  // Optional: if not provided, uses PayAI fallback
+    facilitatorName?: string   // Optional: facilitator name for compatibility adjustments
   ): Promise<string> {
     try {
       // Parse amount to atomic units (6 decimals for USDC)
@@ -246,17 +248,25 @@ export class SolanaSigner {
 
       const instructions: TransactionInstruction[] = [];
 
-      // Position 0: ComputeBudget limit (REQUIRED - must be first)
-      instructions.push(
-        ComputeBudgetProgram.setComputeUnitLimit({ units: 40_000 })
-      );
+      // OctonetAI compatibility: Skip ComputeBudget instructions
+      // OctonetAI's parser only checks the first instruction and can't handle
+      // ComputeBudget instructions. Other facilitators (PayAI, Anyspend) properly
+      // parse all instructions and find the token transfer regardless of position.
+      const skipComputeBudget = facilitatorName === 'OctonetAI';
 
-      // Position 1: ComputeBudget price (REQUIRED - must be second)
-      instructions.push(
-        ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1 })
-      );
+      if (!skipComputeBudget) {
+        // Position 0: ComputeBudget limit (REQUIRED - must be first)
+        instructions.push(
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 40_000 })
+        );
 
-      // Position 2 (conditional): Create ATA if doesn't exist
+        // Position 1: ComputeBudget price (REQUIRED - must be second)
+        instructions.push(
+          ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1 })
+        );
+      }
+
+      // Position 2/0 (conditional): Create ATA if doesn't exist
       const destAtaInfo = await this.connection.getAccountInfo(destinationAta, 'confirmed');
       if (!destAtaInfo) {
         const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
@@ -276,22 +286,36 @@ export class SolanaSigner {
         instructions.push(createAtaInstruction);
       }
 
-      // Position 3/2: TransferChecked instruction
-      const transferIx = createTransferCheckedInstruction(
-        sourceAta,
-        mintPubkey,
-        destinationAta,
-        userPubkey,
-        amountLamports,
-        mint.decimals,
-        [],
-        programId
-      );
+      // Position 3/2/1/0: Transfer instruction (position varies based on ComputeBudget and ATA creation)
+      // OctonetAI compatibility: Use simple Transfer instead of TransferChecked
+      // OctonetAI's parser only recognizes the basic Transfer instruction
+      const transferIx = facilitatorName === 'OctonetAI'
+        ? createTransferInstruction(
+            sourceAta,
+            destinationAta,
+            userPubkey,
+            amountLamports,
+            [],
+            programId
+          )
+        : createTransferCheckedInstruction(
+            sourceAta,
+            mintPubkey,
+            destinationAta,
+            userPubkey,
+            amountLamports,
+            mint.decimals,
+            [],
+            programId
+          );
       instructions.push(transferIx);
 
-      // Use provided fee payer or default to PayAI fallback
-      const feePayerToUse = feePayerAddress || getFallbackFeePayer('PayAI');
-      const feePayerPubkey = new PublicKey(feePayerToUse);
+      // OctonetAI compatibility: User pays their own fees
+      // OctonetAI expects fully-signed transactions (not partially-signed)
+      // Despite advertising a feePayer in /supported, they don't actually sign transactions
+      const feePayerPubkey = facilitatorName === 'OctonetAI'
+        ? userPubkey  // User pays their own fees for OctonetAI
+        : new PublicKey(feePayerAddress || getFallbackFeePayer('PayAI'));
 
       // Create message with dynamic fee payer
       const message = new TransactionMessage({
